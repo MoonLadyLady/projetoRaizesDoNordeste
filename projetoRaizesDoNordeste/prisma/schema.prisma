@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model categorias {
+  id        BigInt     @id @default(autoincrement())
+  nome      String     @db.VarChar(100)
+  descricao String?    @db.VarChar(255)
+  produtos  produtos[]
+}
+
+model estoques {
+  id                    BigInt                  @id @default(autoincrement())
+  unidade_id            BigInt
+  produto_id            BigInt
+  quantidade            Int                     @default(0)
+  produtos              produtos                @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoques_produto")
+  unidades              unidades                @relation(fields: [unidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_estoques_unidade")
+  movimentacoes_estoque movimentacoes_estoque[]
+
+  @@unique([unidade_id, produto_id], map: "uk_estoque_unidade_produto")
+  @@index([unidade_id], map: "idx_estoques_unidade")
+}
+
+model fidelidade {
+  id                       BigInt                     @id @default(autoincrement())
+  cliente_id               BigInt                     @unique
+  saldo_pontos             Int                        @default(0)
+  atualizado_em            DateTime                   @default(now()) @db.Timestamp(6)
+  usuarios                 usuarios                   @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_fidelidade_cliente")
+  movimentacoes_fidelidade movimentacoes_fidelidade[]
+}
+
+model logs_auditoria {
+  id         BigInt    @id @default(autoincrement())
+  usuario_id BigInt?
+  entidade   String    @db.VarChar(100)
+  acao       String    @db.VarChar(100)
+  descricao  String?
+  criado_em  DateTime  @default(now()) @db.Timestamp(6)
+  usuarios   usuarios? @relation(fields: [usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_logs_usuario")
+
+  @@index([acao], map: "idx_logs_acao")
+  @@index([entidade], map: "idx_logs_entidade")
+}
+
+model movimentacoes_estoque {
+  id         BigInt                    @id @default(autoincrement())
+  estoque_id BigInt
+  tipo       tipo_movimentacao_estoque
+  quantidade Int
+  observacao String?
+  criado_em  DateTime                  @default(now()) @db.Timestamp(6)
+  estoques   estoques                  @relation(fields: [estoque_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_movimentacao_estoque")
+}
+
+model movimentacoes_fidelidade {
+  id            BigInt                       @id @default(autoincrement())
+  fidelidade_id BigInt
+  tipo          tipo_movimentacao_fidelidade
+  pontos        Int
+  descricao     String?                      @db.VarChar(255)
+  criado_em     DateTime                     @default(now()) @db.Timestamp(6)
+  fidelidade    fidelidade                   @relation(fields: [fidelidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_movimentacoes_fidelidade")
+}
+
+model pagamentos {
+  id                BigInt           @id @default(autoincrement())
+  pedido_id         BigInt
+  status            status_pagamento @default(PENDENTE)
+  valor             Decimal          @db.Decimal(10, 2)
+  transacao_externa String?          @db.VarChar(150)
+  payload_resposta  Json?
+  criado_em         DateTime         @default(now()) @db.Timestamp(6)
+  pedidos           pedidos          @relation(fields: [pedido_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pagamentos_pedido")
+
+  @@index([status], map: "idx_pagamentos_status")
+}
+
+model pedido_itens {
+  id             BigInt   @id @default(autoincrement())
+  pedido_id      BigInt
+  produto_id     BigInt
+  quantidade     Int
+  preco_unitario Decimal  @db.Decimal(10, 2)
+  subtotal       Decimal  @db.Decimal(10, 2)
+  pedidos        pedidos  @relation(fields: [pedido_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_pedido_itens_pedido")
+  produtos       produtos @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pedido_itens_produto")
+}
+
+model pedidos {
+  id                  BigInt          @id @default(autoincrement())
+  cliente_id          BigInt
+  unidade_id          BigInt
+  promocao_id         BigInt?
+  canal_pedido        canal_pedido
+  status              status_pedido   @default(AGUARDANDO_PAGAMENTO)
+  forma_pagamento     forma_pagamento
+  valor_total         Decimal         @db.Decimal(10, 2)
+  percentual_desconto Decimal         @default(0) @db.Decimal(5, 2)
+  valor_desconto      Decimal         @default(0) @db.Decimal(10, 2)
+  criado_em           DateTime        @default(now()) @db.Timestamp(6)
+  pagamentos          pagamentos[]
+  pedido_itens        pedido_itens[]
+  usuarios            usuarios        @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pedidos_cliente")
+  promocoes           promocoes?      @relation(fields: [promocao_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pedidos_promocao")
+  unidades            unidades        @relation(fields: [unidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_pedidos_unidade")
+
+  @@index([canal_pedido], map: "idx_pedidos_canal")
+  @@index([cliente_id], map: "idx_pedidos_cliente")
+  @@index([status], map: "idx_pedidos_status")
+}
+
+model produtos {
+  id               BigInt             @id @default(autoincrement())
+  categoria_id     BigInt
+  nome             String             @db.VarChar(150)
+  descricao        String?
+  preco            Decimal            @db.Decimal(10, 2)
+  ativo            Boolean            @default(true)
+  criado_em        DateTime           @default(now()) @db.Timestamp(6)
+  estoques         estoques[]
+  pedido_itens     pedido_itens[]
+  categorias       categorias         @relation(fields: [categoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_produtos_categoria")
+  unidade_produtos unidade_produtos[]
+
+  @@index([categoria_id], map: "idx_produtos_categoria")
+}
+
+model promocoes {
+  id                  BigInt    @id @default(autoincrement())
+  nome                String    @db.VarChar(150)
+  descricao           String?
+  percentual_desconto Decimal   @db.Decimal(5, 2)
+  data_inicio         DateTime  @db.Date
+  data_fim            DateTime  @db.Date
+  ativa               Boolean   @default(true)
+  pedidos             pedidos[]
+}
+
+model unidade_produtos {
+  id         BigInt   @id @default(autoincrement())
+  unidade_id BigInt
+  produto_id BigInt
+  disponivel Boolean  @default(true)
+  produtos   produtos @relation(fields: [produto_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_unidade_produtos_produto")
+  unidades   unidades @relation(fields: [unidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_unidade_produtos_unidade")
+
+  @@unique([unidade_id, produto_id], map: "uk_unidade_produto")
+}
+
+model unidades {
+  id               BigInt             @id @default(autoincrement())
+  nome             String             @db.VarChar(150)
+  endereco         String             @db.VarChar(255)
+  telefone         String?            @db.VarChar(20)
+  ativo            Boolean            @default(true)
+  criado_em        DateTime           @default(now()) @db.Timestamp(6)
+  estoques         estoques[]
+  pedidos          pedidos[]
+  unidade_produtos unidade_produtos[]
+}
+
+model usuarios {
+  id                 BigInt           @id @default(autoincrement())
+  nome               String           @db.VarChar(150)
+  email              String           @unique @db.VarChar(150)
+  senha_hash         String           @db.VarChar(255)
+  telefone           String?          @db.VarChar(20)
+  perfil             perfil_usuario
+  consentimento_lgpd Boolean          @default(false)
+  ativo              Boolean          @default(true)
+  criado_em          DateTime         @default(now()) @db.Timestamp(6)
+  fidelidade         fidelidade?
+  logs_auditoria     logs_auditoria[]
+  pedidos            pedidos[]
+}
+
+enum canal_pedido {
+  APP
+  TOTEM
+  BALCAO
+  PICKUP
+  WEB
+}
+
+enum forma_pagamento {
+  PIX
+  CARTAO
+  DINHEIRO
+  MOCK
+}
+
+enum perfil_usuario {
+  CLIENTE
+  ATENDENTE
+  COZINHA
+  GERENTE
+  ADMINISTRADOR
+}
+
+enum status_pagamento {
+  PENDENTE
+  APROVADO
+  RECUSADO
+}
+
+enum status_pedido {
+  AGUARDANDO_PAGAMENTO
+  EM_PREPARO
+  PRONTO
+  ENTREGUE
+  CANCELADO
+}
+
+enum tipo_movimentacao_estoque {
+  ENTRADA
+  SAIDA
+  AJUSTE
+}
+
+enum tipo_movimentacao_fidelidade {
+  ENTRADA
+  SAIDA
+  AJUSTE
+}
